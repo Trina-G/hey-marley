@@ -275,10 +275,10 @@ const IntakeForm = () => {
 
         {/* Submit Status */}
         {submitStatus && (
-          <div className={`p-4 rounded-md ${
+          <div className={`p-2 text-sm ${
             submitStatus.type === 'success' 
-              ? 'bg-green-900 text-green-100 border border-green-700' 
-              : 'bg-red-900 text-red-100 border border-red-700'
+              ? 'text-green-400' 
+              : 'text-red-400'
           }`}>
             {submitStatus.message}
           </div>

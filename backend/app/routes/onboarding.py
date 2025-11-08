@@ -275,3 +275,98 @@ async def start_exercise(request: ExerciseStartRequest):
                 detail=f"Internal server error: {error_msg}"
             )
 
+
+class ExerciseChatRequest(BaseModel):
+    """Request to send a chat message during an exercise"""
+    session_id: str
+    message: str
+
+
+@router.post("/exercise/chat")
+async def exercise_chat(request: ExerciseChatRequest):
+    """
+    Send a chat message during an exercise session
+
+    This endpoint:
+    1. Retrieves session data (form data)
+    2. Calls Langflow Flow 3 with the user's message using the same session_id
+    3. Returns the AI coach's response
+    """
+    try:
+        # Get session to retrieve form data
+        session = get_session(request.session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        if not session.form_data:
+            raise HTTPException(status_code=400, detail="No form data found in session")
+
+        # Initialize LangFlow service
+        langflow_service = LangFlowService()
+
+        # Debug logging
+        print(f"DEBUG CHAT: Sending message for session {request.session_id}")
+        print(f"DEBUG CHAT: User message: {request.message}")
+        print(f"DEBUG CHAT: Student: {session.form_data.get('full_name', 'unknown')}")
+
+        # Call Flow 3 with the user's message
+        # Use the same session_id to maintain conversation context
+        result = langflow_service.continue_exercise(
+            student_data=session.form_data,
+            user_message=request.message,
+            session_id=request.session_id
+        )
+
+        # Debug: Log the raw Langflow response
+        print(f"DEBUG CHAT: Raw response: {result}")
+
+        # Extract the AI response text from the Langflow response
+        ai_response = ""
+        if isinstance(result, dict):
+            outputs = result.get("outputs", [])
+            if outputs:
+                first_output = outputs[0] if outputs else {}
+                output_data = first_output.get("outputs", [{}])[0] if isinstance(first_output.get("outputs"), list) else {}
+                message = output_data.get("results", {}).get("message", {})
+                ai_response = message.get("text") or message.get("content") or str(message)
+            else:
+                ai_response = result.get("text") or result.get("content") or result.get("message", "")
+                if isinstance(ai_response, dict):
+                    ai_response = ai_response.get("text") or ai_response.get("content") or str(ai_response)
+
+        print(f"DEBUG CHAT: Extracted AI response: {ai_response[:100]}...")
+
+        return {
+            "success": True,
+            "session_id": request.session_id,
+            "message": ai_response,
+            "raw_response": result
+        }
+
+    except ValueError as e:
+        # Flow not configured
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+    except Exception as e:
+        # LangFlow API errors or other exceptions
+        error_msg = str(e)
+
+        # Provide helpful error messages
+        if "Connection refused" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail="Cannot connect to Langflow. Make sure Langflow is running at http://localhost:7860"
+            )
+        elif "timed out" in error_msg:
+            raise HTTPException(
+                status_code=504,
+                detail="Langflow request timed out"
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Internal server error: {error_msg}"
+            )
+

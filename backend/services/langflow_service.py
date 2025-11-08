@@ -222,6 +222,55 @@ class LangFlowService:
 
         return result
 
+    def continue_exercise(
+        self,
+        student_data: Dict[str, Any],
+        user_message: str,
+        session_id: str
+    ) -> Dict[str, Any]:
+        """
+        Continue an exercise conversation (Flow: 319348b5-d0e0-463e-af41-3d0989b9a4f6)
+
+        Args:
+            student_data: Dictionary containing student information (for Intake Form)
+            user_message: The user's message in the conversation
+            session_id: Session ID to maintain conversation context
+
+        Returns:
+            AI coach response
+        """
+        # Pass form data to IntakeFormLearnerProfile component via tweaks
+        # The user message is passed as input_value
+        # Component IDs from flow 319348b5-d0e0-463e-af41-3d0989b9a4f6
+        exercise_tweaks = {
+            "IntakeFormLearnerProfile-OnNnU": {
+                "full_name": student_data.get("full_name", ""),
+                "age_group": student_data.get("age_group", ""),
+                "interests": student_data.get("interests", ""),
+                "cultural_refs": student_data.get("cultural_refs", ""),
+                "writing_challenge": student_data.get("hardest", ""),
+                "audience": student_data.get("audience", "")
+            }
+        }
+
+        # Debug logging
+        print(f"DEBUG LANGFLOW CHAT: Continuing exercise conversation")
+        print(f"  User message: {user_message}")
+        print(f"  Session ID: {session_id}")
+        print(f"  Student: {student_data.get('full_name', '')}")
+
+        # Use the same session_id to maintain conversation history
+        result = self.call_flow(
+            flow_name='exercise_generation',
+            input_value=user_message,
+            session_id=session_id,
+            tweaks=exercise_tweaks
+        )
+
+        print(f"DEBUG LANGFLOW CHAT: Received response keys: {result.keys() if isinstance(result, dict) else type(result)}")
+
+        return result
+
     def assess_and_plan(self, assessment_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Assess student writing and generate learning plan (Flow 2)

@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { sendExerciseMessage } from '../services/api';
+import { useSession } from '../context/SessionContext';
 
 // Helper function to detect exercise content
 const isExerciseContent = (line) => {
@@ -46,21 +48,51 @@ const ExerciseContentBlock = ({ content }) => {
 // All exercises now use data from Langflow pipeline - no mock data
 
 const ChatInterface = ({ exercise }) => {
-  const getInitialMessage = () => {
+  const { scenarioData } = useSession();
+
+  const getInitialMessageFromLangflow = () => {
+    // Try to extract the initial message from LangFlow response
+    if (exercise.sessionResponse?.response) {
+      const langflowResponse = exercise.sessionResponse.response;
+
+      // Extract text from LangFlow response structure
+      if (typeof langflowResponse === 'object') {
+        const outputs = langflowResponse.outputs || [];
+        if (outputs.length > 0) {
+          const firstOutput = outputs[0];
+          const outputData = (firstOutput.outputs || [])[0] || {};
+          const message = outputData.results?.message || {};
+          const text = message.text || message.content;
+          if (text) return text;
+        }
+
+        // Try other response formats
+        const text = langflowResponse.text || langflowResponse.content || langflowResponse.message;
+        if (text && typeof text === 'string') return text;
+        if (text && typeof text === 'object') {
+          return text.text || text.content || null;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const getFallbackMessage = () => {
     const title = exercise.title || 'This Exercise';
     const description = exercise.description || '';
     const prompt = exercise.prompt || '';
-    
+
     let message = `Great choice! Let's work on "${title}".\n\n`;
-    
+
     if (description) {
       message += `${description}\n\n`;
     }
-    
+
     if (prompt && prompt !== description) {
       message += `**Your Prompt:**\n${prompt}\n\n`;
     }
-    
+
     if (exercise.guidelines && exercise.guidelines.length > 0) {
       message += `**What to include:**\n`;
       exercise.guidelines.forEach((guideline, idx) => {
@@ -68,19 +100,23 @@ const ChatInterface = ({ exercise }) => {
       });
       message += `\n`;
     }
-    
+
     message += `Take your time and write your response. I'm here to help if you have any questions!`;
-    
+
     return message;
   };
 
-  // Get initial messages using exercise data from Langflow
+  // Get initial messages using LangFlow response or fallback
   const getInitialMessages = () => {
-    // Always use exercise data from Langflow pipeline
+    // Try to use the actual LangFlow response from exercise start
+    const langflowMessage = getInitialMessageFromLangflow();
+
+    console.log('🎬 Initial message from LangFlow:', langflowMessage ? 'Found' : 'Not found, using fallback');
+
     return [
       {
         role: 'assistant',
-        content: getInitialMessage()
+        content: langflowMessage || getFallbackMessage()
       }
     ];
   };
@@ -91,6 +127,7 @@ const ChatInterface = ({ exercise }) => {
   });
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -115,24 +152,55 @@ const ChatInterface = ({ exercise }) => {
     }
     if (!inputValue.trim()) return;
 
+    // Check if we have a session_id
+    if (!scenarioData?.session_id) {
+      setError('Session not found. Please restart the exercise.');
+      return;
+    }
+
     const userMessage = {
       role: 'user',
       content: inputValue.trim()
     };
 
+    const messageText = inputValue.trim();
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsTyping(true);
+    setError(null);
 
-    // Simulate AI response (replace with actual API call later)
-    setTimeout(() => {
-      const aiMessage = {
+    try {
+      // Call LangFlow API via backend
+      console.log('📤 Sending message to LangFlow:', messageText);
+      const result = await sendExerciseMessage(scenarioData.session_id, messageText);
+
+      if (result.success && result.data.message) {
+        const aiMessage = {
+          role: 'assistant',
+          content: result.data.message
+        };
+        console.log('📥 Received AI response:', result.data.message);
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        // Error from API
+        const errorMessage = {
+          role: 'assistant',
+          content: `Sorry, I encountered an error: ${result.error || 'Unable to get response'}. Please try again.`
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        setError(result.error);
+      }
+    } catch (err) {
+      console.error('Error sending message:', err);
+      const errorMessage = {
         role: 'assistant',
-        content: "That's a great start! Keep going with your writing. Remember to include the elements we discussed. Feel free to ask me questions if you need help!"
+        content: "Sorry, I'm having trouble connecting right now. Please try again."
       };
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => [...prev, errorMessage]);
+      setError('Network error');
+    } finally {
       setIsTyping(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -157,7 +225,7 @@ const ChatInterface = ({ exercise }) => {
                 </div>
               ) : (
                 // Bot avatar for assistant
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-semibold text-sm border-2 border-white shadow-md">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-700 to-purple-900 flex items-center justify-center text-white font-semibold text-sm border-2 border-white shadow-md">
                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd" />
                   </svg>
@@ -170,7 +238,7 @@ const ChatInterface = ({ exercise }) => {
               <div
                 className={`max-w-[80%] rounded-lg p-3 ${
                   message.role === 'user'
-                    ? 'bg-green-600 text-white'
+                    ? 'bg-purple-200 text-gray-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}
               >
@@ -242,7 +310,7 @@ const ChatInterface = ({ exercise }) => {
           <div className="flex items-start gap-3">
             {/* Bot Avatar */}
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-semibold text-sm border-2 border-white shadow-md">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-700 to-purple-900 flex items-center justify-center text-white font-semibold text-sm border-2 border-white shadow-md">
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd" />
                 </svg>

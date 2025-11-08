@@ -148,7 +148,7 @@ const WelcomeScreen = () => {
                   : 'bg-gray-400 text-gray-200 cursor-not-allowed'
               }`}
             >
-              {isGenerating ? 'Generating Scenario...' : 'Generate Personalized Scenario'}
+              {isGenerating ? 'Creating exercises...' : 'Create my personal exercises'}
             </button>
           </div>
 
@@ -219,7 +219,6 @@ const WelcomeScreen = () => {
           {/* Display Scenario */}
           {scenarioData.scenario && (
             <div className="bg-white rounded-lg p-6 mb-6 shadow-sm">
-              <h3 className="text-xl font-semibold text-gray-800 mb-4">Scenario</h3>
               <p className="text-gray-700 whitespace-pre-wrap">{scenarioData.scenario}</p>
             </div>
           )}

@@ -148,5 +148,29 @@ export const startExercise = async (sessionId, exerciseTitle, exerciseDescriptio
   }
 };
 
+/**
+ * Send a chat message during an exercise
+ * @param {string} sessionId - Session ID from exercise start
+ * @param {string} message - User's message
+ * @returns {Promise} API response with AI coach's reply
+ */
+export const sendExerciseMessage = async (sessionId, message) => {
+  console.log('💬 SEND MESSAGE CALLED with:', { sessionId, message });
+  try {
+    const response = await api.post('/api/onboarding/exercise/chat', {
+      session_id: sessionId,
+      message: message
+    });
+    return { success: true, data: response.data };
+  } catch (error) {
+    console.error('Error sending message:', error);
+    return {
+      success: false,
+      error: getErrorMessage(error),
+      details: error.response?.data,
+    };
+  }
+};
+
 export default api;
 
